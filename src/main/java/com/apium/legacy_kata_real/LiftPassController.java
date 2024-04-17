@@ -11,6 +11,7 @@ import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -19,6 +20,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 public class LiftPassController {
+
+  @Autowired
+  private Connection connection;
 
   @PutMapping("/prices")
   public void updatePrice(@RequestParam("cost") int liftPassCost, @RequestParam("type") String liftPassType) throws SQLException {
@@ -39,9 +43,6 @@ public class LiftPassController {
       @RequestParam(value = "age", required = false) Integer age,
       @RequestParam(value = "date", required = false) String dateString) throws SQLException, ParseException {
 
-    final Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/lift_pass", "root", "mysql");
-
-
     try (PreparedStatement costStmt = connection.prepareStatement( //
         "SELECT cost FROM base_price WHERE type = ?")) {
       costStmt.setString(1, liftPassType);
@@ -52,7 +53,6 @@ public class LiftPassController {
         boolean isHoliday = false;
 
         if (age != null && age < 6) {
-          connection.close();
           return "{ \"cost\": 0}";
         } else {
           reduction = 0;
@@ -90,23 +90,19 @@ public class LiftPassController {
             // TODO apply reduction for others
             if (age != null && age < 15) {
               int value = result.getInt("cost");
-              connection.close();
               return "{ \"cost\": " + (int) Math.ceil(value * .7) + "}";
             } else {
               if (age == null) {
                 int value = result.getInt("cost");
-                connection.close();
                 double cost = value * (1 - reduction / 100.0);
                 return "{ \"cost\": " + (int) Math.ceil(cost) + "}";
               } else {
                 if (age > 64) {
                   int value = result.getInt("cost");
-                  connection.close();
                   double cost = value * .75 * (1 - reduction / 100.0);
                   return "{ \"cost\": " + (int) Math.ceil(cost) + "}";
                 } else {
                   int value = result.getInt("cost");
-                  connection.close();
                   double cost = value * (1 - reduction / 100.0);
                   return "{ \"cost\": " + (int) Math.ceil(cost) + "}";
                 }
@@ -116,15 +112,12 @@ public class LiftPassController {
             if (age != null && age >= 6) {
               if (age > 64) {
                 int value = result.getInt("cost");
-                connection.close();
                 return "{ \"cost\": " + (int) Math.ceil(value * .4) + "}";
               } else {
                 int value = result.getInt("cost");
-                connection.close();
                 return "{ \"cost\": " + value + "}";
               }
             } else {
-              connection.close();
               return "{ \"cost\": 0}";
             }
           }
