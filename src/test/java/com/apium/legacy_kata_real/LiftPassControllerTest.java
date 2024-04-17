@@ -23,6 +23,17 @@ class LiftPassControllerTest {
   @Test
   void should_return_a_price() throws Exception {
     mockMvc.perform(get("/prices")
+            .param("type", "1jour")
+            .param("age", "23")
+            .param("date", "2019-02-18"))
+        .andExpect(status().isOk())
+        // Add more assertions as needed
+        .andExpect(jsonPath("$.cost").value("35"));
+  }
+
+  @Test
+  void should_return_a_price_with_night_pass() throws Exception {
+    mockMvc.perform(get("/prices")
             .param("type", "night")
             .param("age", "23")
             .param("date", "2019-02-18"))

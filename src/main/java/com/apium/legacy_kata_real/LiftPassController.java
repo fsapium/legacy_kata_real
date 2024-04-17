@@ -3,16 +3,19 @@ package com.apium.legacy_kata_real;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -22,7 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class LiftPassController {
 
   @Autowired
-  private Connection connection;
+  private JdbcTemplate jdbcTemplate;
 
   @PutMapping("/prices")
   public void updatePrice(@RequestParam("cost") int liftPassCost, @RequestParam("type") String liftPassType) throws SQLException {
@@ -41,14 +44,13 @@ public class LiftPassController {
   @GetMapping(value = "/prices", produces = MediaType.APPLICATION_JSON_VALUE)
   public String getPrice(@RequestParam("type") String liftPassType,
       @RequestParam(value = "age", required = false) Integer age,
-      @RequestParam(value = "date", required = false) String dateString) throws SQLException, ParseException {
+      @RequestParam(value = "date", required = false) String dateString) {
 
-    try (PreparedStatement costStmt = connection.prepareStatement( //
-        "SELECT cost FROM base_price WHERE type = ?")) {
-      costStmt.setString(1, liftPassType);
-      try (ResultSet result = costStmt.executeQuery()) {
-        result.next();
+    String sql = "SELECT cost FROM base_price WHERE type = ?";
 
+    try {
+      List<Integer> resultList = jdbcTemplate.queryForList(sql, Integer.class, liftPassType);
+      for (Integer baseCost : resultList) {
         int reduction;
         boolean isHoliday = false;
 
@@ -59,51 +61,36 @@ public class LiftPassController {
 
           if (!liftPassType.equals("night")) {
             DateFormat isoFormat = new SimpleDateFormat("yyyy-MM-dd");
+            Date date = isoFormat.parse(dateString);
+            sql = "SELECT * FROM holidays WHERE holiday = ?";
+            Map<String, Object> holiday = jdbcTemplate.queryForMap(sql, date);
 
-            try (PreparedStatement holidayStmt = connection.prepareStatement( //
-                "SELECT * FROM holidays")) {
-              try (ResultSet holidays = holidayStmt.executeQuery()) {
-
-                while (holidays.next()) {
-                  Date holiday = holidays.getDate("holiday");
-                  if (dateString != null) {
-                    Date d = isoFormat.parse(dateString);
-                    if (d.getYear() == holiday.getYear() && //
-                        d.getMonth() == holiday.getMonth() && //
-                        d.getDate() == holiday.getDate()) {
-                      isHoliday = true;
-                    }
-                  }
-                }
-
-              }
+            Date holidayDate = (Date) holiday.get("holiday");
+            if (date != null && holidayDate != null ) {
+              isHoliday = true;
             }
 
             if (dateString != null) {
               Calendar calendar = Calendar.getInstance();
               calendar.setTime(isoFormat.parse(dateString));
-              if (!isHoliday && calendar.get(Calendar.DAY_OF_WEEK) == 2) {
+              if (!isHoliday && calendar.get(Calendar.DAY_OF_WEEK) == Calendar.MONDAY) {
                 reduction = 35;
               }
             }
 
             // TODO apply reduction for others
             if (age != null && age < 15) {
-              int value = result.getInt("cost");
-              return "{ \"cost\": " + (int) Math.ceil(value * .7) + "}";
+              return "{ \"cost\": " + (int) Math.ceil(baseCost * .7) + "}";
             } else {
               if (age == null) {
-                int value = result.getInt("cost");
-                double cost = value * (1 - reduction / 100.0);
+                double cost = baseCost * (1 - reduction / 100.0);
                 return "{ \"cost\": " + (int) Math.ceil(cost) + "}";
               } else {
                 if (age > 64) {
-                  int value = result.getInt("cost");
-                  double cost = value * .75 * (1 - reduction / 100.0);
+                  double cost = baseCost * .75 * (1 - reduction / 100.0);
                   return "{ \"cost\": " + (int) Math.ceil(cost) + "}";
                 } else {
-                  int value = result.getInt("cost");
-                  double cost = value * (1 - reduction / 100.0);
+                  double cost = baseCost * (1 - reduction / 100.0);
                   return "{ \"cost\": " + (int) Math.ceil(cost) + "}";
                 }
               }
@@ -111,11 +98,9 @@ public class LiftPassController {
           } else {
             if (age != null && age >= 6) {
               if (age > 64) {
-                int value = result.getInt("cost");
-                return "{ \"cost\": " + (int) Math.ceil(value * .4) + "}";
+                return "{ \"cost\": " + (int) Math.ceil(baseCost * .4) + "}";
               } else {
-                int value = result.getInt("cost");
-                return "{ \"cost\": " + value + "}";
+                return "{ \"cost\": " + baseCost + "}";
               }
             } else {
               return "{ \"cost\": 0}";
@@ -123,7 +108,10 @@ public class LiftPassController {
           }
         }
       }
+    } catch (DataAccessException | ParseException e) {
+      throw new RuntimeException(e);
     }
+    return "";
   }
 
 }
